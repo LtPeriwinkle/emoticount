@@ -11,7 +11,7 @@ regex = "1.5"
 
 [dependencies.sqlx]
 version = "0.5"
-features = ["runtime-tokio-rustls", "sqlite", "chrono", "offline"]
+features = ["runtime-tokio-rustls", "sqlite", "offline"]
 
 [dependencies.tokio]
 version = "1.7"
