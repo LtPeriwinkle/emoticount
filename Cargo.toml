@@ -8,7 +8,7 @@ edition = "2018"
 [dependencies]
 serenity = "0.10"
 regex = "1.5"
-lazy-static = "1.4"
+lazy_static = "1.4"
 
 [dependencies.sqlx]
 version = "0.5"
