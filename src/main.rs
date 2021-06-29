@@ -44,26 +44,34 @@ impl HoldsDb for Context {
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
-        lazy_static! {
-            static ref RE = Regex::new("<a?:(.{2,32}):([0-9]{17,19})").unwrap();
+        lazy_static::lazy_static! {
+            static ref RE: Regex = Regex::new("(<a?:(.{2,32}):([0-9]{17,19})>)").unwrap();
         }
         println!("{}", msg.content);
         if RE.is_match(&msg.content) {
-            let db = ctx.data.read().await.get::<Db>().unwrap().clone();
+            // have to use idiot i64 because stupid sqlite won't take a u64
+            let mut in_msg: Vec<i64> = vec![];
+            let db = ctx.get_db().await;
             let mut conn = db.pool.acquire().await.unwrap();
-            let cap = RE.captures_iter(&msg.content).next().unwrap();
-            let emote_id = &cap[2];
-            let emote_name = &cap[1];
-            let id = emote_id.parse::<i64>().unwrap();
-            let emote = sqlx::query!("SELECT * FROM emotes WHERE id=?;", id).fetch_optional(&mut conn).await.unwrap();
-            sqlx::query!("INSERT INTO users VALUES (?, ?);", *msg.author.id.as_u64() as i64 /* ffs sqlite devs */, emote_id).execute(&mut conn).await.unwrap();
-            if emote.is_some() {
-                let emote = emote.unwrap();
-                //sqlx::query!("REPLACE INTO emotes VALUES (?, ?, ?, ?);", emote_id, emote_name, emote.uses + 1, uniq).execute(&mut conn).await.unwrap();
+            let (mut emote_id, mut emote_name): (&str, &str);
+            for cap in RE.captures_iter(&msg.content) {
+                emote_id = &cap[3];
+                emote_name = &cap[2];
+                let id = emote_id.parse::<i64>().unwrap();
+                let emote = sqlx::query!("SELECT * FROM emotes WHERE id=?;", id).fetch_optional(&mut conn).await.unwrap();
+                if emote.is_some() {
+                    let emote = emote.unwrap();
+                    let uses = emote.uses + 1;
+                    let uniq = if in_msg.contains(&id) {emote.uniq} else {emote.uniq + 1};
+                    sqlx::query!("REPLACE INTO emotes (id, name, uses, uniq) VALUES (?, ?, ?, ?);", id, emote_name, uses, uniq).execute(&mut conn).await.unwrap();
+                } else {
+                    sqlx::query!("INSERT INTO emotes (id, name, uses, uniq) VALUES (?, ?, 1, 1)", id, emote_name).execute(&mut conn).await.unwrap();
+                }
+                in_msg.push(id);
             }
         }
     }
-    async fn ready(&self, ctx: Context, ready: Ready) {
+    async fn ready(&self, _ctx: Context, _ready: Ready) {
         println!("client ready");
     }
 }
