@@ -1,6 +1,6 @@
 use serenity::async_trait;
 use serenity::prelude::TypeMapKey;
-use serenity::model::{channel::Message, gateway::Ready};
+use serenity::model::{channel::{Message, Reaction, ReactionType}, gateway::Ready};
 use serenity::client::{Context, EventHandler, Client};
 use serenity::client::bridge::gateway::GatewayIntents;
 
@@ -10,6 +10,7 @@ use sqlx::SqlitePool;
 
 use std::sync::Arc;
 use std::fs;
+use std::convert::TryInto;
 
 struct Handler;
 struct Db {
@@ -68,6 +69,22 @@ impl EventHandler for Handler {
                     sqlx::query!("INSERT INTO emotes (id, name, uses, uniq) VALUES (?, ?, 1, 1)", id, emote_name).execute(&mut conn).await.unwrap();
                 }
                 in_msg.push(id);
+            }
+        }
+    }
+    async fn reaction_add(&self, ctx: Context, add_reaction: Reaction) {
+        let db = ctx.get_db().await;
+        let mut conn = db.pool.acquire().await.unwrap();
+        if let ReactionType::Custom {id, name: Some(n), ..} = add_reaction.emoji {
+            let id: i64 = id.0.try_into().unwrap();
+            let emote = sqlx::query!("SELECT reacts FROM emotes WHERE id=?", id).fetch_optional(&mut conn).await.unwrap();
+            if emote.is_some() {
+                let emote = emote.unwrap();
+                let reacts = emote.reacts + 1;
+                sqlx::query!("REPLACE INTO emotes (id, reacts) VALUES (?, ?)", id, reacts).execute(&mut conn).await.unwrap();
+            } else {
+                let name = &n;
+                sqlx::query!("INSERT INTO emotes (id, name, reacts) VALUES (?, ?, ?)", id, name, 1).execute(&mut conn).await.unwrap();
             }
         }
     }
