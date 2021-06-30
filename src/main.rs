@@ -1,9 +1,10 @@
 use serenity::async_trait;
 use serenity::client::{bridge::gateway::GatewayIntents, Client, Context, EventHandler};
-use serenity::framework::standard::{macros::command, CommandResult};
+use serenity::framework::standard::{macros::{command, group}, CommandResult};
 use serenity::model::{
     channel::{Message, Reaction, ReactionType},
     gateway::Ready,
+    id::EmojiId
 };
 use serenity::prelude::TypeMapKey;
 use serenity::utils::Colour;
@@ -51,20 +52,23 @@ impl HoldsDb for Context {
 impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
         lazy_static::lazy_static! {
-            static ref RE: Regex = Regex::new("(<a?:(.{2,32}):([0-9]{17,19})>)").unwrap();
+            static ref RE: Regex = Regex::new(r"(<a?:(\w{2,32}):([0-9]{17,19})>)").unwrap();
+            static ref ANIMATED: Regex = Regex::new(r"<a:\w{2,32}:[0-9]{17,19}>").unwrap();
         }
         let bot_id = ctx.http.get_current_user().await.unwrap().id;
         if msg.author.id != bot_id && RE.is_match(&msg.content) {
             // have to use idiot i64 because stupid sqlite won't take a u64
-            let mut in_msg: HashMap<i64, (i64, i64, String)> = HashMap::new();
+            let mut in_msg: HashMap<i64, (i64, i64, String, bool)> = HashMap::new();
             let db = ctx.get_db().await;
             let mut conn = db.pool.acquire().await.unwrap();
             let (mut emote_id, mut emote_name): (&str, &str);
             let (mut uses, mut uniq): (i64, i64);
             let mut id: i64;
+            let mut animated: bool;
             for cap in RE.captures_iter(&msg.content) {
                 emote_id = &cap[3];
                 emote_name = &cap[2];
+                println!("{:?}", cap);
                 let name = format!(":{}:", emote_name);
                 id = emote_id.parse::<i64>().unwrap();
                 if !in_msg.contains_key(&id) {
@@ -75,24 +79,28 @@ impl EventHandler for Handler {
                     if emote.is_some() {
                         let emote = emote.unwrap();
                         uses = emote.uses + 1;
-                        uniq = emote.uniq;
+                        uniq = emote.uniq + 1;
+                        animated = emote.animated == 1;
                     } else {
                         uses = 1;
                         uniq = 1;
+                        animated = ANIMATED.is_match(&cap[0]);
                     }
-                    in_msg.insert(id, (uses, uniq, name));
+                    in_msg.insert(id, (uses, uniq, name, animated));
                 } else {
                     let emote = in_msg.get(&id).unwrap().clone();
-                    in_msg.insert(id, (emote.0 + 1, emote.1, emote.2));
+                    println!("{:?}a", emote);
+                    in_msg.insert(id, (emote.0 + 1, emote.1, emote.2, emote.3));
                 }
             }
             for (id, stats) in in_msg.iter() {
                 sqlx::query!(
-                    "INSERT OR REPLACE INTO emotes (id, name, uses, uniq) VALUES (?, ?, ?, ?)",
+                    "INSERT OR REPLACE INTO emotes (id, name, uses, uniq, animated) VALUES (?, ?, ?, ?, ?);",
                     id,
                     stats.2,
                     stats.0,
-                    stats.1
+                    stats.1,
+                    stats.3
                 )
                 .execute(&mut conn)
                 .await
@@ -108,21 +116,21 @@ impl EventHandler for Handler {
         } = add_reaction.emoji
         {
             let id: i64 = id.0.try_into().unwrap();
-            let emote = sqlx::query!("SELECT reacts FROM emotes WHERE id=?", id)
+            let emote = sqlx::query!("SELECT reacts FROM emotes WHERE id=?;", id)
                 .fetch_optional(&mut conn)
                 .await
                 .unwrap();
             if emote.is_some() {
                 let emote = emote.unwrap();
                 let reacts = emote.reacts + 1;
-                sqlx::query!("REPLACE INTO emotes (id, reacts) VALUES (?, ?)", id, reacts)
+                sqlx::query!("REPLACE INTO emotes (id, reacts) VALUES (?, ?);", id, reacts)
                     .execute(&mut conn)
                     .await
                     .unwrap();
             } else {
                 let name = &n;
                 sqlx::query!(
-                    "INSERT INTO emotes (id, name, reacts) VALUES (?, ?, ?)",
+                    "INSERT INTO emotes (id, name, reacts) VALUES (?, ?, ?);",
                     id,
                     name,
                     1
@@ -141,22 +149,40 @@ impl EventHandler for Handler {
 #[command]
 #[only_in(guilds)]
 async fn emotes(ctx: &Context, msg: &Message) -> CommandResult {
-    let _ = msg.channel_id.send_message(&ctx.http, |m| {
-        m.embed(|mut e| {
-            e.title("Top emotes usage:");
-            e.color(Colour::from_rgb(0, 43, 54))
-        })
-    });
+    let emotes_guild = msg.guild(&ctx.cache).await;
+    if emotes_guild.is_some() {
+        let emotes_guild = emotes_guild.unwrap().emojis;
+        let db = ctx.get_db().await;
+        let mut conn = db.pool.acquire().await.unwrap();
+        let emotes_db = sqlx::query!("SELECT id, name, uses, uniq, animated FROM emotes ORDER BY uses DESC;").fetch_all(&mut conn).await.unwrap();
+        msg.channel_id.send_message(&ctx.http, |m| {
+            m.embed(|e| {
+                e.title("Top emotes usage:");
+                let mut num = 1;
+                for emote in emotes_db {
+                    if num < 15 && emotes_guild.contains_key(&EmojiId::from(emote.id as u64)) {
+                        e.field(format!("<{}{}{}> ({})", if emote.animated == 1 {"a"} else {""}, emote.name, emote.id, emote.name), format!("Uses: {}; Unique: {}.", emote.uses, emote.uniq), false);
+                        num += 1;
+                    }
+                }
+                e.color(Colour::from_rgb(0, 43, 54))
+                })
+        }).await.unwrap();
+    }
     Ok(())
 }
+
+#[group]
+#[commands(emotes)]
+struct EmoteCommands;
 
 #[tokio::main]
 async fn main() {
     let db = Db::new().await;
-    let frm = serenity::framework::StandardFramework::new().configure(|c| c.prefix(";"));
+    let frm = serenity::framework::StandardFramework::new().configure(|c| c.prefix(";")).group(&EMOTECOMMANDS_GROUP);
     let mut client = Client::builder(fs::read_to_string(".bot-token").unwrap())
         .event_handler(Handler)
-        .intents(GatewayIntents::non_privileged())
+        .intents(GatewayIntents::all())
         .framework(frm)
         .await
         .expect("client creation error");
