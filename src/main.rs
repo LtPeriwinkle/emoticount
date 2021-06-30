@@ -68,7 +68,6 @@ impl EventHandler for Handler {
             for cap in RE.captures_iter(&msg.content) {
                 emote_id = &cap[3];
                 emote_name = &cap[2];
-                println!("{:?}", cap);
                 let name = format!(":{}:", emote_name);
                 id = emote_id.parse::<i64>().unwrap();
                 if !in_msg.contains_key(&id) {
@@ -112,28 +111,30 @@ impl EventHandler for Handler {
         let db = ctx.get_db().await;
         let mut conn = db.pool.acquire().await.unwrap();
         if let ReactionType::Custom {
-            id, name: Some(n), ..
+            id, name: Some(n), animated
         } = add_reaction.emoji
         {
             let id: i64 = id.0.try_into().unwrap();
-            let emote = sqlx::query!("SELECT reacts FROM emotes WHERE id=?;", id)
+            let emote = sqlx::query!("SELECT name, reacts FROM emotes WHERE id=?;", id)
                 .fetch_optional(&mut conn)
                 .await
                 .unwrap();
             if emote.is_some() {
                 let emote = emote.unwrap();
                 let reacts = emote.reacts + 1;
-                sqlx::query!("REPLACE INTO emotes (id, reacts) VALUES (?, ?);", id, reacts)
+                sqlx::query!("REPLACE INTO emotes (id, name, reacts) VALUES (?, ?, ?);", id, emote.name, reacts)
                     .execute(&mut conn)
                     .await
                     .unwrap();
             } else {
                 let name = &n;
+                let animated: u8 = if animated {1} else {0};
                 sqlx::query!(
-                    "INSERT INTO emotes (id, name, reacts) VALUES (?, ?, ?);",
+                    "INSERT INTO emotes (id, name, reacts, animated) VALUES (?, ?, ?, ?);",
                     id,
                     name,
-                    1
+                    1,
+                    animated,
                 )
                 .execute(&mut conn)
                 .await
@@ -148,7 +149,7 @@ impl EventHandler for Handler {
 
 #[command]
 #[only_in(guilds)]
-async fn top(ctx: &Context, msg: &Message) -> CommandResult {
+async fn topemotes(ctx: &Context, msg: &Message) -> CommandResult {
     let emotes_guild = msg.guild(&ctx.cache).await;
     if emotes_guild.is_some() {
         let emotes_guild = emotes_guild.unwrap().emojis;
@@ -174,7 +175,7 @@ async fn top(ctx: &Context, msg: &Message) -> CommandResult {
 
 #[command]
 #[only_in(guilds)]
-async fn bottom(ctx: &Context, msg: &Message) -> CommandResult {
+async fn bottomemotes(ctx: &Context, msg: &Message) -> CommandResult {
     let emotes_guild = msg.guild(&ctx.cache).await;
     if emotes_guild.is_some() {
         let emotes_guild = emotes_guild.unwrap().emojis;
@@ -198,8 +199,60 @@ async fn bottom(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
+#[command]
+#[only_in(guilds)]
+async fn topreacts(ctx: &Context, msg: &Message) -> CommandResult {
+    let emotes_guild = msg.guild(&ctx.cache).await;
+    if emotes_guild.is_some() {
+        let emotes_guild = emotes_guild.unwrap().emojis;
+        let db = ctx.get_db().await;
+        let mut conn = db.pool.acquire().await.unwrap();
+        let emotes_db = sqlx::query!("SELECT id, name, reacts, animated FROM emotes WHERE reacts != 0 ORDER BY reacts DESC;").fetch_all(&mut conn).await.unwrap();
+        msg.channel_id.send_message(&ctx.http, |m| {
+            m.embed(|e| {
+                e.title("Top reactions usage:");
+                let mut num = 1;
+                for emote in emotes_db {
+                    if num < 15 && emotes_guild.contains_key(&EmojiId::from(emote.id as u64)) {
+                        e.field(format!("<{}{}{}> ({})", if emote.animated == 1 {"a"} else {""}, emote.name, emote.id, emote.name), format!("Reactions: {}", emote.reacts), false);
+                        num += 1;
+                    }
+                }
+                e.color(Colour::from_rgb(0, 43, 54))
+                })
+        }).await.unwrap();
+    }
+    Ok(())
+}
+
+#[command]
+#[only_in(guilds)]
+async fn bottomreacts(ctx: &Context, msg: &Message) -> CommandResult {
+    let emotes_guild = msg.guild(&ctx.cache).await;
+    if emotes_guild.is_some() {
+        let emotes_guild = emotes_guild.unwrap().emojis;
+        let db = ctx.get_db().await;
+        let mut conn = db.pool.acquire().await.unwrap();
+        let emotes_db = sqlx::query!("SELECT id, name, reacts, animated FROM emotes WHERE reacts != 0 ORDER BY reacts ASC;").fetch_all(&mut conn).await.unwrap();
+        msg.channel_id.send_message(&ctx.http, |m| {
+            m.embed(|e| {
+                e.title("Bottom reactions usage:");
+                let mut num = 1;
+                for emote in emotes_db {
+                    if num < 15 && emotes_guild.contains_key(&EmojiId::from(emote.id as u64)) {
+                        e.field(format!("<{}{}{}> ({})", if emote.animated == 1 {"a"} else {""}, emote.name, emote.id, emote.name), format!("Reactions: {}", emote.reacts), false);
+                        num += 1;
+                    }
+                }
+                e.color(Colour::from_rgb(0, 43, 54))
+                })
+        }).await.unwrap();
+    }
+    Ok(())
+}
+
 #[group]
-#[commands(top, bottom)]
+#[commands(topemotes, bottomemotes, topreacts, bottomreacts)]
 struct EmoteCommands;
 
 #[tokio::main]
