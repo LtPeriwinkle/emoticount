@@ -11,6 +11,7 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 use std::fs;
 use std::convert::TryInto;
+use std::collections::HashMap;
 
 struct Handler;
 struct Db {
@@ -51,25 +52,37 @@ impl EventHandler for Handler {
         println!("{}", msg.content);
         if RE.is_match(&msg.content) {
             // have to use idiot i64 because stupid sqlite won't take a u64
-            let mut in_msg: Vec<i64> = vec![];
+            let mut in_msg: HashMap<i64, (i64, i64, String)> = HashMap::new();
             let db = ctx.get_db().await;
             let mut conn = db.pool.acquire().await.unwrap();
             let (mut emote_id, mut emote_name): (&str, &str);
+            let (mut uses, mut uniq): (i64, i64);
+            let mut id: i64;
             for cap in RE.captures_iter(&msg.content) {
                 emote_id = &cap[3];
                 emote_name = &cap[2];
-                let id = emote_id.parse::<i64>().unwrap();
-                let emote = sqlx::query!("SELECT * FROM emotes WHERE id=?;", id).fetch_optional(&mut conn).await.unwrap();
-                if emote.is_some() {
-                    let emote = emote.unwrap();
-                    let uses = emote.uses + 1;
-                    let uniq = if in_msg.contains(&id) {emote.uniq} else {emote.uniq + 1};
-                    sqlx::query!("REPLACE INTO emotes (id, name, uses, uniq) VALUES (?, ?, ?, ?);", id, emote_name, uses, uniq).execute(&mut conn).await.unwrap();
+                let name = format!(":{}:", emote_name);
+                id = emote_id.parse::<i64>().unwrap();
+                if !in_msg.contains_key(&id) {
+                    let emote = sqlx::query!("SELECT * FROM emotes WHERE id=?;", id).fetch_optional(&mut conn).await.unwrap();
+                    if emote.is_some() {
+                        let emote = emote.unwrap();
+                        uses = emote.uses + 1;
+                        uniq = emote.uniq;
+                    } else {
+                        uses = 1;
+                        uniq = 1;
+                    }
+                    in_msg.insert(id, (uses, uniq, name));
                 } else {
-                    sqlx::query!("INSERT INTO emotes (id, name, uses, uniq) VALUES (?, ?, 1, 1)", id, emote_name).execute(&mut conn).await.unwrap();
+                    let emote = in_msg.get(&id).unwrap().clone();
+                    in_msg.insert(id, (emote.0 + 1, emote.1, emote.2));
                 }
-                in_msg.push(id);
             }
+            for (id, stats) in in_msg.iter() {
+                sqlx::query!("INSERT OR REPLACE INTO emotes (id, name, uses, uniq) VALUES (?, ?, ?, ?)", id, stats.2, stats.0, stats.1).execute(&mut conn).await.unwrap();
+            }
+            
         }
     }
     async fn reaction_add(&self, ctx: Context, add_reaction: Reaction) {
