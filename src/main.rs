@@ -148,7 +148,7 @@ impl EventHandler for Handler {
 
 #[command]
 #[only_in(guilds)]
-async fn emotes(ctx: &Context, msg: &Message) -> CommandResult {
+async fn top(ctx: &Context, msg: &Message) -> CommandResult {
     let emotes_guild = msg.guild(&ctx.cache).await;
     if emotes_guild.is_some() {
         let emotes_guild = emotes_guild.unwrap().emojis;
@@ -172,8 +172,34 @@ async fn emotes(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
+#[command]
+#[only_in(guilds)]
+async fn bottom(ctx: &Context, msg: &Message) -> CommandResult {
+    let emotes_guild = msg.guild(&ctx.cache).await;
+    if emotes_guild.is_some() {
+        let emotes_guild = emotes_guild.unwrap().emojis;
+        let db = ctx.get_db().await;
+        let mut conn = db.pool.acquire().await.unwrap();
+        let emotes_db = sqlx::query!("SELECT id, name, uses, uniq, animated FROM emotes ORDER BY uses ASC;").fetch_all(&mut conn).await.unwrap();
+        msg.channel_id.send_message(&ctx.http, |m| {
+            m.embed(|e| {
+                e.title("Bottom emotes usage:");
+                let mut num = 1;
+                for emote in emotes_db {
+                    if num < 15 && emotes_guild.contains_key(&EmojiId::from(emote.id as u64)) {
+                        e.field(format!("<{}{}{}> ({})", if emote.animated == 1 {"a"} else {""}, emote.name, emote.id, emote.name), format!("Uses: {}; Unique: {}.", emote.uses, emote.uniq), false);
+                        num += 1;
+                    }
+                }
+                e.color(Colour::from_rgb(0, 43, 54))
+                })
+        }).await.unwrap();
+    }
+    Ok(())
+}
+
 #[group]
-#[commands(emotes)]
+#[commands(top, bottom)]
 struct EmoteCommands;
 
 #[tokio::main]
