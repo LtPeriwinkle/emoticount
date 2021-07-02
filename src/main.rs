@@ -88,7 +88,6 @@ impl EventHandler for Handler {
                     in_msg.insert(id, (uses, uniq, name, animated));
                 } else {
                     let emote = in_msg.get(&id).unwrap().clone();
-                    println!("{:?}a", emote);
                     in_msg.insert(id, (emote.0 + 1, emote.1, emote.2, emote.3));
                 }
             }
