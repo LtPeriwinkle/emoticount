@@ -289,7 +289,7 @@ async fn main() {
     let frm = serenity::framework::StandardFramework::new().configure(|c| c.prefix(";")).group(&EMOTECOMMANDS_GROUP);
     let mut client = Client::builder(fs::read_to_string(".bot-token").unwrap())
         .event_handler(Handler)
-        .intents(GatewayIntents::all())
+        .intents(GatewayIntents::non_privileged())
         .framework(frm)
         .await
         .expect("client creation error");
