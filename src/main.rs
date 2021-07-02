@@ -213,7 +213,7 @@ async fn topreacts(ctx: &Context, msg: &Message) -> CommandResult {
                 let mut num = 1;
                 for emote in emotes_db {
                     if num < 15 && emotes_guild.contains_key(&EmojiId::from(emote.id as u64)) {
-                        e.field(format!("<{}{}{}> ({})", if emote.animated == 1 {"a"} else {""}, emote.name, emote.id, emote.name), format!("Reactions: {}", emote.reacts), true);
+                        e.field(format!("<{}:{}:{}> ({})", if emote.animated == 1 {"a"} else {""}, emote.name, emote.id, emote.name), format!("Reactions: {}", emote.reacts), true);
                         num += 1;
                     }
                 }
@@ -239,7 +239,7 @@ async fn bottomreacts(ctx: &Context, msg: &Message) -> CommandResult {
                 let mut num = 1;
                 for emote in emotes_db {
                     if num < 15 && emotes_guild.contains_key(&EmojiId::from(emote.id as u64)) {
-                        e.field(format!("<{}{}{}> ({})", if emote.animated == 1 {"a"} else {""}, emote.name, emote.id, emote.name), format!("Reactions: {}", emote.reacts), true);
+                        e.field(format!("<{}:{}:{}> (:{}:)", if emote.animated == 1 {"a"} else {""}, emote.name, emote.id, emote.name), format!("Reactions: {}", emote.reacts), true);
                         num += 1;
                     }
                 }
