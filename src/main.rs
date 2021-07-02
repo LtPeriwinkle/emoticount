@@ -162,7 +162,7 @@ async fn topemotes(ctx: &Context, msg: &Message) -> CommandResult {
                 let mut num = 1;
                 for emote in emotes_db {
                     if num < 15 && emotes_guild.contains_key(&EmojiId::from(emote.id as u64)) {
-                        e.field(format!("<{}{}{}> ({})", if emote.animated == 1 {"a"} else {""}, emote.name, emote.id, emote.name), format!("Uses: {}; Unique: {}.", emote.uses, emote.uniq), false);
+                        e.field(format!("<{}{}{}> ({})", if emote.animated == 1 {"a"} else {""}, emote.name, emote.id, emote.name), format!("Uses: {}; Unique: {}.", emote.uses, emote.uniq), true);
                         num += 1;
                     }
                 }
@@ -180,21 +180,21 @@ async fn bottomemotes(ctx: &Context, msg: &Message) -> CommandResult {
     if emotes_guild.is_some() {
         let emotes_guild = emotes_guild.unwrap().emojis;
         let db = ctx.get_db().await;
-        let mut conn = db.pool.acquire().await.unwrap();
-        let emotes_db = sqlx::query!("SELECT id, name, uses, uniq, animated FROM emotes ORDER BY uses ASC;").fetch_all(&mut conn).await.unwrap();
+        let mut conn = db.pool.acquire().await.map_err(|e| async {msg.channel_id.say(&ctx.http, "database error").await.unwrap(); e})?;
+        let emotes_db = sqlx::query!("SELECT id, name, uses, uniq, animated FROM emotes ORDER BY uses ASC;").fetch_all(&mut conn).await.map_err(|e| async {msg.channel_id.say(&ctx.http, "database error").await.unwrap(); e})?;
         msg.channel_id.send_message(&ctx.http, |m| {
             m.embed(|e| {
                 e.title("Bottom emotes usage:");
                 let mut num = 1;
                 for emote in emotes_db {
                     if num < 15 && emotes_guild.contains_key(&EmojiId::from(emote.id as u64)) {
-                        e.field(format!("<{}{}{}> ({})", if emote.animated == 1 {"a"} else {""}, emote.name, emote.id, emote.name), format!("Uses: {}; Unique: {}.", emote.uses, emote.uniq), false);
+                        e.field(format!("<{}{}{}> ({})", if emote.animated == 1 {"a"} else {""}, emote.name, emote.id, emote.name), format!("Uses: {}; Unique: {}.", emote.uses, emote.uniq), true);
                         num += 1;
                     }
                 }
                 e.color(Colour::from_rgb(0, 43, 54))
                 })
-        }).await.unwrap();
+        }).await?;
     }
     Ok(())
 }
@@ -214,13 +214,13 @@ async fn topreacts(ctx: &Context, msg: &Message) -> CommandResult {
                 let mut num = 1;
                 for emote in emotes_db {
                     if num < 15 && emotes_guild.contains_key(&EmojiId::from(emote.id as u64)) {
-                        e.field(format!("<{}{}{}> ({})", if emote.animated == 1 {"a"} else {""}, emote.name, emote.id, emote.name), format!("Reactions: {}", emote.reacts), false);
+                        e.field(format!("<{}{}{}> ({})", if emote.animated == 1 {"a"} else {""}, emote.name, emote.id, emote.name), format!("Reactions: {}", emote.reacts), true);
                         num += 1;
                     }
                 }
                 e.color(Colour::from_rgb(0, 43, 54))
                 })
-        }).await.unwrap();
+        }).await?;
     }
     Ok(())
 }
@@ -240,7 +240,7 @@ async fn bottomreacts(ctx: &Context, msg: &Message) -> CommandResult {
                 let mut num = 1;
                 for emote in emotes_db {
                     if num < 15 && emotes_guild.contains_key(&EmojiId::from(emote.id as u64)) {
-                        e.field(format!("<{}{}{}> ({})", if emote.animated == 1 {"a"} else {""}, emote.name, emote.id, emote.name), format!("Reactions: {}", emote.reacts), false);
+                        e.field(format!("<{}{}{}> ({})", if emote.animated == 1 {"a"} else {""}, emote.name, emote.id, emote.name), format!("Reactions: {}", emote.reacts), true);
                         num += 1;
                     }
                 }
