@@ -246,13 +246,41 @@ async fn bottomreacts(ctx: &Context, msg: &Message) -> CommandResult {
                 }
                 e.color(Colour::from_rgb(0, 43, 54))
                 })
-        }).await.unwrap();
+        }).await?;
+    }
+    Ok(())
+}
+
+#[command]
+#[only_in(guilds)]
+async fn zero(ctx: &Context, msg: &Message) -> CommandResult {
+    msg.channel_id.send_message(&ctx.http, |m| m.content("please wait")).await?;
+    let emotes_guild = msg.guild(&ctx.cache).await;
+    if emotes_guild.is_some() {
+        let emotes_guild = emotes_guild.unwrap().emojis;
+        let db = ctx.get_db().await;
+        let mut conn = db.pool.acquire().await.unwrap();
+        let emotes_db = sqlx::query!("SELECT id FROM emotes;").fetch_all(&mut conn).await.unwrap();
+        let emotes_db: Vec<i64> = emotes_db.iter().map(|v| v.id).collect();
+        msg.channel_id.send_message(&ctx.http, |m| {
+            m.embed(|e| {
+                e.title("Emotes with no uses:");
+                let mut num = 1;
+                for (_, emote) in emotes_guild {
+                    if num < 25 && !emotes_db.contains(&(emote.id.0 as i64)) {
+                        e.field(format!("<{}:{}:{}>", if emote.animated {"a"} else {""}, emote.name, emote.id.0), format!("(:{}:)", emote.name) , true);
+                        num += 1;
+                    }
+                }
+                e.color(Colour::from_rgb(0, 43, 54))
+            })
+        }).await?;
     }
     Ok(())
 }
 
 #[group]
-#[commands(topemotes, bottomemotes, topreacts, bottomreacts)]
+#[commands(topemotes, bottomemotes, topreacts, bottomreacts, zero)]
 struct EmoteCommands;
 
 #[tokio::main]
