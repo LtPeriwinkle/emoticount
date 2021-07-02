@@ -154,8 +154,8 @@ async fn topemotes(ctx: &Context, msg: &Message) -> CommandResult {
     if emotes_guild.is_some() {
         let emotes_guild = emotes_guild.unwrap().emojis;
         let db = ctx.get_db().await;
-        let mut conn = db.pool.acquire().await.unwrap();
-        let emotes_db = sqlx::query!("SELECT id, name, uses, uniq, animated FROM emotes ORDER BY uses DESC;").fetch_all(&mut conn).await.unwrap();
+        let mut conn = db.pool.acquire().await?;
+        let emotes_db = sqlx::query!("SELECT id, name, uses, uniq, animated FROM emotes ORDER BY uses DESC;").fetch_all(&mut conn).await?;
         msg.channel_id.send_message(&ctx.http, |m| {
             m.embed(|e| {
                 e.title("Top emotes usage:");
@@ -180,8 +180,8 @@ async fn bottomemotes(ctx: &Context, msg: &Message) -> CommandResult {
     if emotes_guild.is_some() {
         let emotes_guild = emotes_guild.unwrap().emojis;
         let db = ctx.get_db().await;
-        let mut conn = db.pool.acquire().await.map_err(|e| async {msg.channel_id.say(&ctx.http, "database error").await.unwrap(); e})?;
-        let emotes_db = sqlx::query!("SELECT id, name, uses, uniq, animated FROM emotes ORDER BY uses ASC;").fetch_all(&mut conn).await.map_err(|e| async {msg.channel_id.say(&ctx.http, "database error").await.unwrap(); e})?;
+        let mut conn = db.pool.acquire().await?;
+        let emotes_db = sqlx::query!("SELECT id, name, uses, uniq, animated FROM emotes ORDER BY uses ASC;").fetch_all(&mut conn).await?;
         msg.channel_id.send_message(&ctx.http, |m| {
             m.embed(|e| {
                 e.title("Bottom emotes usage:");
@@ -206,8 +206,8 @@ async fn topreacts(ctx: &Context, msg: &Message) -> CommandResult {
     if emotes_guild.is_some() {
         let emotes_guild = emotes_guild.unwrap().emojis;
         let db = ctx.get_db().await;
-        let mut conn = db.pool.acquire().await.unwrap();
-        let emotes_db = sqlx::query!("SELECT id, name, reacts, animated FROM emotes WHERE reacts != 0 ORDER BY reacts DESC;").fetch_all(&mut conn).await.unwrap();
+        let mut conn = db.pool.acquire().await?;
+        let emotes_db = sqlx::query!("SELECT id, name, reacts, animated FROM emotes WHERE reacts != 0 ORDER BY reacts DESC;").fetch_all(&mut conn).await?;
         msg.channel_id.send_message(&ctx.http, |m| {
             m.embed(|e| {
                 e.title("Top reactions usage:");
